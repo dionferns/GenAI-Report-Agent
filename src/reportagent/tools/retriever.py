@@ -13,7 +13,7 @@ log = structlog.get_logger()
 class HybridRetriever:
     """Hybrid BM25 + vector retrieval."""
 
-    def __init__(self, topic: str = "uk_ai_regulation"):
+    def __init__(self, topic: str = "uk_economy"):
         self.vector_store = VectorStore(topic)
         self.embedder = get_embedder()
         self._bm25 = None
@@ -92,7 +92,7 @@ class HybridRetriever:
 
 
 @tool
-def hybrid_search(query: str, topic: str = "uk_ai_regulation", n_results: int = 8) -> list[Chunk]:
+def hybrid_search(query: str, topic: str = "uk_economy", n_results: int = 8) -> list[Chunk]:
     """
     Retrieves the most relevant document chunks using hybrid BM25 and vector search.
     """

@@ -145,6 +145,7 @@ if user_input:
         try:
             chat_state = ChatState(
                 session_id=st.session_state.session_id,
+                topic=settings.default_topic,
                 current_query=user_input,
             )
 

@@ -11,7 +11,7 @@ log = structlog.get_logger()
 class VectorStore:
     """Wrapper around Chroma for chunk storage and retrieval."""
 
-    def __init__(self, topic: str = "uk_ai_regulation"):
+    def __init__(self, topic: str = "uk_economy"):
         settings = get_settings()
         self.client = chromadb.PersistentClient(
             path=settings.chroma_persist_dir

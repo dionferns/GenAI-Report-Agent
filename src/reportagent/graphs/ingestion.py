@@ -18,20 +18,29 @@ from reportagent.llm import get_llm_provider
 from reportagent.llm.embedder import get_embedder
 from reportagent.tools.fetcher import fetch_urls
 from reportagent.tools.cleaner import clean_html_to_articles
+from reportagent.observability.run_logger import RunLogger
 
 log = structlog.get_logger()
 settings = get_settings()
 
+# Create run logger (will be initialized in planner_node)
+run_logger: RunLogger = None
+
 
 def planner_node(state: IngestionState) -> IngestionState:
     """Decide which source URLs to fetch, skipping already-processed articles."""
+    global run_logger
+    run_logger = RunLogger(state.run_id)
+
     log.info("planner_started", topic=state.topic, run_id=state.run_id)
+    run_logger.log("planner_started", topic=state.topic)
     log.debug("source_map_available_topics", topics=list(SOURCE_MAP.keys()))
 
     sources = SOURCE_MAP.get(state.topic, [])
 
     if not sources:
         log.error("topic_not_in_source_map", topic=state.topic, available_topics=list(SOURCE_MAP.keys()))
+        run_logger.log("error_topic_not_found", topic=state.topic)
         return state
 
     log.debug("fetching_from_sources", source_count=len(sources), sources=sources)
@@ -60,6 +69,7 @@ def planner_node(state: IngestionState) -> IngestionState:
     if not urls_not_tried:
         # We've tried all available URLs and found no new articles
         log.warning("all_urls_exhausted", total=len(all_urls), tried=len(state.urls_tried_in_run))
+        run_logger.log("planner_decision", decision="all_urls_exhausted", total=len(all_urls), tried=len(state.urls_tried_in_run))
         state.urls_to_fetch = []
         state.processed_all_articles = True
     else:
@@ -69,6 +79,12 @@ def planner_node(state: IngestionState) -> IngestionState:
         state.urls_tried_in_run.extend(urls_to_fetch)  # Track which URLs we're trying
         state.processed_all_articles = False
         log.info("urls_selected_for_fetching", count=len(urls_to_fetch), not_tried=len(urls_not_tried))
+        run_logger.log_planner(
+            all_urls=len(all_urls),
+            urls_tried=state.urls_tried_in_run,
+            urls_to_fetch=urls_to_fetch,
+            processed_all=False,
+        )
 
     log.info("planner_completed", new_urls=len(urls_to_fetch), run_id=state.run_id)
     return state
@@ -102,12 +118,48 @@ def cleaner_node(state: IngestionState) -> IngestionState:
     state.articles = articles
 
     log.debug("articles_extracted", count=len(articles), titles=[a.title for a in articles[:3]])
+    log.info("cleaner_completed", count=len(articles), run_id=state.run_id)
+    return state
 
-    # Log articles to markdown file
-    if articles:
+
+def deduper_node(state: IngestionState) -> IngestionState:
+    """Remove duplicate articles already in the vector store."""
+    global run_logger
+    log.info("deduper_started", count=len(state.articles), run_id=state.run_id)
+
+    vector_store = VectorStore(state.topic)
+    embedder = get_embedder()
+    deduplicated = []
+    skipped = 0
+    skipped_ids = []
+    kept_ids = []
+
+    for article in state.articles:
+        # Check exact ID match (using article_id, not chunk id)
+        if vector_store.article_exists(article.id):
+            log.debug("article_already_exists", article_id=article.id, title=article.title)
+            skipped += 1
+            skipped_ids.append({"id": article.id, "title": article.title, "url": str(article.url)})
+            continue
+
+        # If article is not in store, it's new
+        deduplicated.append(article)
+        kept_ids.append({"id": article.id, "title": article.title, "url": str(article.url)})
+
+    state.articles = deduplicated
+
+    # Log deduplication results
+    run_logger.log_deduper(
+        input_articles=len(state.articles) + skipped,
+        kept=len(deduplicated),
+        skipped=skipped,
+        article_ids={"kept": kept_ids, "skipped": skipped_ids},
+    )
+
+    # Write markdown file only for articles that passed deduplication
+    if deduplicated:
         md_content = f"# Extracted Articles — {state.run_id}\n\n"
-        for i, article in enumerate(articles, 1):
-            # Get first 2-3 sentences (roughly 200 chars)
+        for i, article in enumerate(deduplicated, 1):
             preview = article.cleaned_text[:200] + "..." if len(article.cleaned_text) > 200 else article.cleaned_text
             md_content += f"## Article {i}\n\n"
             md_content += f"**Title:** {article.title}\n\n"
@@ -116,44 +168,17 @@ def cleaner_node(state: IngestionState) -> IngestionState:
             md_content += f"**Preview:**\n{preview}\n\n"
             md_content += "---\n\n"
 
-        # Write to file
         import pathlib
         pathlib.Path("./data").mkdir(exist_ok=True)
         with open(f"./data/extracted_articles_{state.run_id}.md", "w") as f:
             f.write(md_content)
-        log.info("articles_logged_to_file", filename=f"extracted_articles_{state.run_id}.md", article_count=len(articles))
-    else:
-        log.warning("no_articles_extracted", raw_pages_count=len(state.raw_pages))
+        log.info("articles_logged_to_file", filename=f"extracted_articles_{state.run_id}.md", article_count=len(deduplicated))
 
-    log.info("cleaner_completed", count=len(articles), run_id=state.run_id)
-    return state
-
-
-def deduper_node(state: IngestionState) -> IngestionState:
-    """Remove duplicate articles already in the vector store."""
-    log.info("deduper_started", count=len(state.articles), run_id=state.run_id)
-
-    vector_store = VectorStore(state.topic)
-    embedder = get_embedder()
-    deduplicated = []
-    skipped = 0
-
-    for article in state.articles:
-        # Check exact ID match (using article_id, not chunk id)
-        if vector_store.article_exists(article.id):
-            log.debug("article_already_exists", article_id=article.id, title=article.title)
-            skipped += 1
-            continue
-
-        # If article is not in store, it's new
-        deduplicated.append(article)
-
-    state.articles = deduplicated
-
-    # If all fetched articles were duplicates, mark as processed_all_articles
+    # If all fetched articles were duplicates, log decision but DON'T set processed_all_articles yet
+    # (planner will set it when it exhausts all URLs)
     if len(deduplicated) == 0 and skipped > 0:
         log.warning("all_fetched_articles_were_duplicates", skipped=skipped, duplicates_found=skipped)
-        state.processed_all_articles = True
+        run_logger.log("deduper_decision", decision="all_duplicates", will_retry=True)
 
     new_titles = [a.title for a in deduplicated[:3]]
     log.info("deduper_completed", kept=len(deduplicated), skipped=skipped, new_articles=new_titles, run_id=state.run_id)
@@ -212,7 +237,8 @@ def reporter_node(state: IngestionState) -> IngestionState:
     # Retrieve top chunks for context
     from reportagent.tools.retriever import HybridRetriever
     retriever = HybridRetriever(state.topic)
-    context_chunks = retriever.retrieve("UK AI regulation news summary", n_results=20)
+    query = f"{state.topic.replace('_', ' ').title()} news summary"
+    context_chunks = retriever.retrieve(query, n_results=20)
 
     # Build context
     context = "\n\n".join([f"[{i}] {chunk.text}" for i, chunk in enumerate(context_chunks, 1)])

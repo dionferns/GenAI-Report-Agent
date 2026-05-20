@@ -165,6 +165,7 @@ class IngestionState(BaseModel):
 
 class ChatState(BaseModel):
     session_id: str
+    topic: str = "uk_economy"
     messages: list[ChatMessage] = Field(default_factory=list)
     current_query: str = ""
     sanitised_query: str = ""

@@ -70,16 +70,16 @@ def query_router_node(state: ChatState) -> ChatState:
 
 def retriever_node(state: ChatState) -> ChatState:
     """Retrieve relevant chunks using hybrid search."""
-    log.info("retriever_started", session_id=state.session_id, query_type=state.query_type)
+    log.info("retriever_started", session_id=state.session_id, query_type=state.query_type, topic=state.topic)
 
-    retriever = HybridRetriever()
+    retriever = HybridRetriever(topic=state.topic)
     chunks = retriever.retrieve(state.sanitised_query, n_results=8)
     state.retrieved_chunks = chunks
 
     # If latest query, fetch the latest report
     if state.query_type == "latest":
         archive = Archive()
-        latest_report = archive.get_latest_report("uk_ai_regulation")
+        latest_report = archive.get_latest_report(state.topic)
         state.latest_report = latest_report
 
     log.info("retriever_completed", session_id=state.session_id, chunks=len(chunks))
@@ -106,8 +106,9 @@ def responder_node(state: ChatState) -> ChatState:
 
     # Build instructions based on query type
     instructions = ""
+    topic_display = state.topic.replace("_", " ").title()
     if state.query_type == "vague":
-        instructions = "Provide a general summary of the current state of UK AI regulation based on the context."
+        instructions = f"Provide a general summary of the current state of {topic_display} based on the context."
     elif state.query_type == "adversarial":
         instructions = "Only state facts that are directly present in the context. If the context does not confirm the claim in the question, say so explicitly."
     else:

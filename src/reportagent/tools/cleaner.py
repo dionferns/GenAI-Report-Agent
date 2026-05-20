@@ -10,7 +10,7 @@ log = structlog.get_logger()
 
 
 def clean_html_to_articles(
-    raw_pages: list[tuple[str, str, datetime]], topic: str = "uk_ai_regulation"
+    raw_pages: list[tuple[str, str, datetime]], topic: str = "uk_economy"
 ) -> list[Article]:
     """
     Extracts clean article text from raw HTML using trafilatura,

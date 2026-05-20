@@ -54,3 +54,5 @@ uv.lock
 src/**/*.egg-info/
 output.json
 evals/results/
+
+videos/
