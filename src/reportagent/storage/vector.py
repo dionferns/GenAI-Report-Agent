@@ -71,6 +71,14 @@ class VectorStore:
         except Exception:
             return False
 
+    def article_exists(self, article_id: str) -> bool:
+        """Check if an article (by ID) exists in the collection."""
+        try:
+            result = self.collection.get(where={"article_id": article_id})
+            return len(result["ids"]) > 0
+        except Exception:
+            return False
+
     def get_all_chunk_texts(self) -> list[str]:
         """Get all chunk texts for BM25 index building."""
         results = self.collection.get()

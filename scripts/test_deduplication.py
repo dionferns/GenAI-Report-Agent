@@ -58,7 +58,7 @@ def extract_articles_from_feeds(topic: str, max_articles: int = 10) -> dict:
         content = f"{url_str}{date_str}".encode()
         article_id = sha256(content).hexdigest()
 
-        if vector_store.document_exists(article_id):
+        if vector_store.article_exists(article_id):
             duplicate_urls.append(url)
         else:
             new_urls.append(url)

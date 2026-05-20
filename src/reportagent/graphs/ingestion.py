@@ -130,13 +130,13 @@ def deduper_node(state: IngestionState) -> IngestionState:
     skipped = 0
 
     for article in state.articles:
-        # Check exact ID match
-        if vector_store.document_exists(article.id):
+        # Check exact ID match (using article_id, not chunk id)
+        if vector_store.article_exists(article.id):
             log.debug("article_already_exists", article_id=article.id, title=article.title)
             skipped += 1
             continue
 
-        # If we found the article by ID, it's definitely a duplicate
+        # If article is not in store, it's new
         deduplicated.append(article)
 
     state.articles = deduplicated
