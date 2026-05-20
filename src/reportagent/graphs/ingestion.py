@@ -206,6 +206,17 @@ Rules:
 
         # Parse JSON
         report_data = json.loads(response)
+        # Deduplicate source URLs and article IDs
+        seen_urls = set()
+        unique_urls = []
+        unique_article_ids = []
+        for chunk in context_chunks:
+            url = chunk.metadata.get("url") if chunk.metadata else None
+            if url and url not in seen_urls:
+                unique_urls.append(url)
+                unique_article_ids.append(chunk.article_id)
+                seen_urls.add(url)
+
         report = Report(
             id=str(uuid.uuid4()),
             topic=state.topic,
@@ -214,8 +225,8 @@ Rules:
             key_takeaways=report_data["key_takeaways"],
             organisations_mentioned=report_data.get("organisations_mentioned", []),
             key_terms=report_data.get("key_terms", []),
-            source_urls=[chunk.metadata.get("url") for chunk in context_chunks],
-            article_ids=[chunk.article_id for chunk in context_chunks],
+            source_urls=unique_urls,
+            article_ids=unique_article_ids,
             delta_notes=report_data.get("delta_notes"),
             run_id=state.run_id,
         )
