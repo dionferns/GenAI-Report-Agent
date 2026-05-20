@@ -18,8 +18,7 @@ try:
 except ImportError:
     print("RAGAS not installed. Install with: pip install ragas datasets")
     exit(1)
-
-HEllo 
+ 
 
 def run_evaluation():
     """Run RAGAS evaluation against the golden dataset."""
