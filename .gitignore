@@ -50,3 +50,4 @@ logs/
 
 # Archived/deprecated files (not for Git repo)
 .archive/
+uv.lock
