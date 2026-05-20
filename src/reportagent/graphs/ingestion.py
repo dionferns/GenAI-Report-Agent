@@ -142,8 +142,8 @@ def deduper_node(state: IngestionState) -> IngestionState:
     state.articles = deduplicated
 
     # If all fetched articles were duplicates, mark as processed_all_articles
-    if len(deduplicated) == 0 and len(state.articles) == 0 and skipped > 0:
-        log.warning("all_fetched_articles_were_duplicates", skipped=skipped, total_available=len(state.urls_to_fetch))
+    if len(deduplicated) == 0 and skipped > 0:
+        log.warning("all_fetched_articles_were_duplicates", skipped=skipped, duplicates_found=skipped)
         state.processed_all_articles = True
 
     new_titles = [a.title for a in deduplicated[:3]]
