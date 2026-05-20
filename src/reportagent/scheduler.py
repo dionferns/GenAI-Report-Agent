@@ -47,7 +47,7 @@ def main():
     # Run once immediately on startup
     run_ingestion()
 
-    # Schedule recurring job
+    # Schedule recurring job.
     scheduler = BlockingScheduler()
 
     scheduler.add_job(
