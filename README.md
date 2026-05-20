@@ -4,7 +4,7 @@
 >
 > **Domain:** UK Economy news | **Refresh:** Hourly | **Output:** Reports + Chat Interface
 
-![Demo](docs/demo.mp4)
+![Demo](docs/demo.gif)
 
 ---
 
