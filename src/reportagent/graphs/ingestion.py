@@ -54,12 +54,21 @@ def planner_node(state: IngestionState) -> IngestionState:
 
     log.info("total_urls_available", count=len(all_urls))
 
-    # Take first max_urls_per_run for fetching (deduper_node will handle deduplication)
-    urls_to_fetch = all_urls[:settings.max_urls_per_run]
-    state.urls_to_fetch = urls_to_fetch
-    state.processed_all_articles = False
+    # Skip URLs we've already tried in this run (when retrying after all-duplicates)
+    urls_not_tried = [url for url in all_urls if url not in state.urls_tried_in_run]
 
-    log.info("urls_selected_for_fetching", count=len(urls_to_fetch), available=len(all_urls))
+    if not urls_not_tried:
+        # We've tried all available URLs and found no new articles
+        log.warning("all_urls_exhausted", total=len(all_urls), tried=len(state.urls_tried_in_run))
+        state.urls_to_fetch = []
+        state.processed_all_articles = True
+    else:
+        # Take next batch of URLs to fetch
+        urls_to_fetch = urls_not_tried[:settings.max_urls_per_run]
+        state.urls_to_fetch = urls_to_fetch
+        state.urls_tried_in_run.extend(urls_to_fetch)  # Track which URLs we're trying
+        state.processed_all_articles = False
+        log.info("urls_selected_for_fetching", count=len(urls_to_fetch), not_tried=len(urls_not_tried))
 
     log.info("planner_completed", new_urls=len(urls_to_fetch), run_id=state.run_id)
     return state
@@ -451,6 +460,17 @@ def persister_node(state: IngestionState) -> IngestionState:
     return state
 
 
+def after_deduper(state: IngestionState) -> str:
+    """Decide whether to continue or fetch more articles if all were duplicates."""
+    if len(state.articles) == 0 and not state.processed_all_articles:
+        # All articles were duplicates, try fetching more
+        log.warning("all_articles_duplicate_retrying", run_id=state.run_id)
+        return "planner"  # Loop back to planner to fetch more URLs
+    else:
+        # Continue with chunking/embedding
+        return "chunker_embedder"
+
+
 def build_ingestion_graph():
     """Build the ingestion StateGraph."""
     graph = StateGraph(IngestionState)
@@ -468,7 +488,11 @@ def build_ingestion_graph():
     graph.add_edge("planner", "fetcher")
     graph.add_edge("fetcher", "cleaner")
     graph.add_edge("cleaner", "deduper")
-    graph.add_edge("deduper", "chunker_embedder")
+    graph.add_conditional_edges(
+        "deduper",
+        after_deduper,
+        {"chunker_embedder": "chunker_embedder", "planner": "planner"},
+    )
     graph.add_edge("chunker_embedder", "reporter")
     graph.add_edge("reporter", "critic")
     graph.add_conditional_edges(

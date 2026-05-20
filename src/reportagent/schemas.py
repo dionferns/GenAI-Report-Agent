@@ -158,6 +158,7 @@ class IngestionState(BaseModel):
     critic_iterations: int = 0
     errors: list[str] = Field(default_factory=list)
     processed_all_articles: bool = False
+    urls_tried_in_run: list[str] = Field(default_factory=list)
 
 
 # ── Chat State ───────────────────────────────────────────────────────────────
