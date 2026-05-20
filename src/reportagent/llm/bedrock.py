@@ -1,12 +1,11 @@
 """AWS Bedrock provider implementation."""
 
-import json
 import boto3
 from reportagent.config import get_settings
 
 
 class BedrockProvider:
-    """Claude via AWS Bedrock."""
+    """Llama 3 via AWS Bedrock."""
 
     def __init__(self):
         settings = get_settings()
@@ -16,25 +15,32 @@ class BedrockProvider:
             aws_access_key_id=settings.aws_access_key_id,
             aws_secret_access_key=settings.aws_secret_access_key,
         )
-        # Use Claude 3 Haiku (cheapest option - 85% cost reduction)
-        self.model_id = "anthropic.claude-3-haiku-20240307-v1:0"
+        self.model_id = "meta.llama3-70b-instruct-v1:0"
 
     def invoke(self, messages: list[dict], max_tokens: int = 1000) -> str:
-        """Synchronously invoke Claude via Bedrock."""
-        body = json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": max_tokens,
-            "messages": messages,
-        })
-        response = self.client.invoke_model(
+        """Synchronously invoke Llama 3 via Bedrock Converse API."""
+        # Convert message format: if content is a string, wrap it as list
+        formatted_messages = []
+        for msg in messages:
+            content = msg["content"]
+            if isinstance(content, str):
+                content = [{"text": content}]
+            formatted_messages.append({
+                "role": msg["role"],
+                "content": content,
+            })
+
+        response = self.client.converse(
             modelId=self.model_id,
-            body=body,
+            messages=formatted_messages,
+            inferenceConfig={
+                "maxTokens": max_tokens,
+                "temperature": 0.5,
+                "topP": 0.9,
+            },
         )
-        result = json.loads(response["body"].read())
-        return result["content"][0]["text"]
+        return response["output"]["message"]["content"][0]["text"]
 
     async def ainvoke(self, messages: list[dict], max_tokens: int = 1000) -> str:
-        """Asynchronously invoke Claude via Bedrock."""
-        # For async, we use the sync method in an executor
-        # In production, use aioboto3
+        """Asynchronously invoke Llama 3 via Bedrock."""
         return self.invoke(messages, max_tokens)

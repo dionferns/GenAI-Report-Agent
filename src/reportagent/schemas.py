@@ -67,9 +67,9 @@ class Report(BaseModel):
     @classmethod
     def validate_summary(cls, v: str) -> str:
         word_count = len(v.split())
-        if word_count < 90 or word_count > 165:
+        if word_count < 80 or word_count > 180:
             raise ValueError(
-                f"Summary must be 100-150 words (90-165 allowed). Got {word_count} words."
+                f"Summary must be 80-180 words. Got {word_count} words."
             )
         return v
 
@@ -157,6 +157,7 @@ class IngestionState(BaseModel):
     critic_verdict: Optional[CriticVerdict] = None
     critic_iterations: int = 0
     errors: list[str] = Field(default_factory=list)
+    processed_all_articles: bool = False
 
 
 # ── Chat State ───────────────────────────────────────────────────────────────

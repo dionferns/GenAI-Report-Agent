@@ -14,15 +14,20 @@ from reportagent.observability.tracing import setup_tracing
 setup_logging()
 setup_tracing()
 
+from reportagent.config import get_settings
+
+settings = get_settings()
+topic_name = settings.default_topic.replace("_", " ").title()
+
 st.set_page_config(
-    page_title="UK AI Regulation Intelligence Agent",
+    page_title=f"{topic_name} Intelligence Agent",
     page_icon="📰",
     layout="wide",
 )
 
 # Header
-st.title("📰 UK AI Regulation Intelligence Agent")
-st.markdown("Powered by LangGraph + Claude AI")
+st.title(f"📰 {topic_name} Intelligence Agent")
+st.markdown("Powered by LangGraph + Llama 3 (AWS Bedrock)")
 
 # Initialize session state
 if "session_id" not in st.session_state:
@@ -37,20 +42,29 @@ with st.sidebar:
 
     # Get archive stats
     try:
+        from reportagent.config import get_settings
+
         archive = Archive()
-        latest_report = archive.get_latest_report("uk_ai_regulation")
+        settings = get_settings()
+        latest_report = archive.get_latest_report(settings.default_topic)
         latest_run = archive.get_latest_run_log()
 
         if latest_report:
-            st.subheader("Latest Report")
+            st.subheader("📄 Latest Report")
+            st.markdown(f"**Topic:** {latest_report.topic}")
             st.markdown(f"**Generated:** {latest_report.generated_at.strftime('%Y-%m-%d %H:%M')}")
-            st.markdown(f"**Summary:**\n{latest_report.summary[:200]}...")
+            st.markdown(f"**Summary:**\n{latest_report.summary}")
 
             with st.expander("📌 Key Takeaways"):
                 for takeaway in latest_report.key_takeaways:
                     st.markdown(f"• {takeaway}")
 
+            with st.expander("🏢 Organisations Mentioned"):
+                for org in latest_report.organisations_mentioned:
+                    st.markdown(f"• {org}")
+
         if latest_run:
+            st.markdown("---")
             st.markdown(f"**Last Run Status:** {'✅ Success' if latest_run.status.value == 'success' else '❌ Failed'}")
             st.markdown(f"**Articles Fetched:** {latest_run.articles_fetched}")
             st.markdown(f"**Chunks Added:** {latest_run.chunks_added}")
@@ -59,21 +73,44 @@ with st.sidebar:
         st.error(f"Error loading system status: {str(e)}")
 
     # Trigger button
-    if st.button("🚀 Trigger Ingestion Now"):
-        with st.spinner("Running ingestion..."):
+    if st.button("🚀 Trigger Ingestion Now", key="trigger_ingestion"):
+        with st.spinner("Running ingestion (this may take 1-2 minutes)..."):
             try:
                 from reportagent.schemas import IngestionState
                 from reportagent.graphs.ingestion import ingestion_graph
+                from reportagent.config import get_settings
+                import sys
+                import io
 
+                settings = get_settings()
                 state = IngestionState(
                     run_id=str(uuid4()),
-                    topic="uk_ai_regulation",
+                    topic=settings.default_topic,
                 )
-                ingestion_graph.invoke(state.model_dump())
-                st.success("Ingestion completed!")
+
+                # Capture logs
+                old_stdout = sys.stdout
+                sys.stdout = io.StringIO()
+
+                try:
+                    result = ingestion_graph.invoke(state.model_dump())
+                    sys.stdout = old_stdout
+
+                    st.success("✅ Ingestion completed successfully!")
+                    st.toast("New report generated!", icon="📄")
+                    # Clear cache to force reload of latest report
+                    st.cache_data.clear()
+                    # Rerun to refresh sidebar with new report
+                    st.rerun()
+
+                except Exception as e:
+                    sys.stdout = old_stdout
+                    raise e
 
             except Exception as e:
-                st.error(f"Ingestion failed: {str(e)}")
+                st.error(f"❌ Ingestion failed: {str(e)}")
+                import traceback
+                st.write(traceback.format_exc())
 
 # Main chat area
 st.header("💬 Ask a Question")
@@ -88,7 +125,7 @@ for message in st.session_state.messages:
                     st.markdown(f"[[{citation.index}] {citation.url}]({citation.url})")
 
 # Chat input
-user_input = st.chat_input("Ask a question about UK AI regulation...")
+user_input = st.chat_input(f"Ask a question about {topic_name.lower()}...")
 
 if user_input:
     # Add user message to history

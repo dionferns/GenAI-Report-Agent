@@ -25,9 +25,9 @@ class Settings(BaseSettings):
     log_file: str = "./logs/agent.log"
 
     # Agent Configuration
-    default_topic: str = "uk_ai_regulation"
+    default_topic: str = "uk_economy"
     ingest_interval_minutes: int = 60
-    max_urls_per_run: int = 15
+    max_urls_per_run: int = 10
     max_critic_iterations: int = 2
 
     class Config:
@@ -38,11 +38,22 @@ class Settings(BaseSettings):
 
 # Source map for topic-based URLs
 SOURCE_MAP = {
-    "uk_ai_regulation": [
-        "https://feeds.bbci.co.uk/news/technology/rss.xml",
-        "https://www.gov.uk/search/news-and-communications.atom?keywords=artificial+intelligence",
-        "https://www.gov.uk/search/news-and-communications.atom?keywords=ai+regulation",
+    "uk_economy": [
+        "https://feeds.bbci.co.uk/news/business/rss.xml",
+        "https://feeds.bbci.co.uk/news/business/companies/rss.xml",
+        "https://feeds.bbci.co.uk/news/uk/rss.xml",
     ]
+    # "uk_ai_regulation": [
+    #     "https://feeds.bbci.co.uk/news/technology/rss.xml",
+    #     "https://feeds.bbci.co.uk/news/business/rss.xml",
+    #     "https://www.gov.uk/search/news-and-communications.atom?keywords=artificial+intelligence",
+    #     "https://www.gov.uk/search/news-and-communications.atom?keywords=ai+regulation",
+    # ]
+    # "sports": [
+    #     "https://feeds.bbci.co.uk/news/sport/rss.xml",
+    #     "https://feeds.bbci.co.uk/sport/football/rss.xml",
+    #     "https://feeds.bbci.co.uk/sport/cricket/rss.xml",
+    # ]
 }
 
 

@@ -24,26 +24,44 @@ settings = get_settings()
 
 
 def planner_node(state: IngestionState) -> IngestionState:
-    """Decide which source URLs to fetch."""
+    """Decide which source URLs to fetch, skipping already-processed articles."""
     log.info("planner_started", topic=state.topic, run_id=state.run_id)
+    log.debug("source_map_available_topics", topics=list(SOURCE_MAP.keys()))
 
-    urls_to_fetch = []
     sources = SOURCE_MAP.get(state.topic, [])
 
+    if not sources:
+        log.error("topic_not_in_source_map", topic=state.topic, available_topics=list(SOURCE_MAP.keys()))
+        return state
+
+    log.debug("fetching_from_sources", source_count=len(sources), sources=sources)
+
+    # Collect all available URLs from feeds (don't limit yet)
+    all_urls = []
     for source in sources:
         try:
             feed = feedparser.parse(source)
-            for entry in feed.entries[:5]:  # Max 5 per feed
+            entries_count = len(feed.entries)
+            log.debug("feed_parsed", source=source, entries_found=entries_count)
+            urls_from_this_feed = 0
+            for entry in feed.entries:  # Get ALL entries, not just first 10
                 if hasattr(entry, "link"):
-                    urls_to_fetch.append(entry.link)
+                    all_urls.append(entry.link)
+                    urls_from_this_feed += 1
+            log.debug("urls_extracted_from_feed", source=source, count=urls_from_this_feed)
         except Exception as e:
             log.error("feed_parse_error", source=source, error=str(e))
 
-    # Limit to max URLs per run
-    urls_to_fetch = urls_to_fetch[: settings.max_urls_per_run]
-    state.urls_to_fetch = urls_to_fetch
+    log.info("total_urls_available", count=len(all_urls))
 
-    log.info("planner_completed", count=len(urls_to_fetch), run_id=state.run_id)
+    # Take first max_urls_per_run for fetching (deduper_node will handle deduplication)
+    urls_to_fetch = all_urls[:settings.max_urls_per_run]
+    state.urls_to_fetch = urls_to_fetch
+    state.processed_all_articles = False
+
+    log.info("urls_selected_for_fetching", count=len(urls_to_fetch), available=len(all_urls))
+
+    log.info("planner_completed", new_urls=len(urls_to_fetch), run_id=state.run_id)
     return state
 
 
@@ -54,22 +72,49 @@ def fetcher_node(state: IngestionState) -> IngestionState:
     log.info("fetcher_started", count=len(state.urls_to_fetch), run_id=state.run_id)
 
     if not state.urls_to_fetch:
+        log.warning("no_urls_to_fetch", processed_all=state.processed_all_articles, run_id=state.run_id)
         return state
+
+    log.debug("urls_to_fetch", urls=state.urls_to_fetch[:3])  # Log first 3 URLs
 
     # Run async function in sync context
     raw_pages = asyncio.run(fetch_urls(state.urls_to_fetch))
     state.raw_pages = raw_pages
 
-    log.info("fetcher_completed", fetched=len(raw_pages), run_id=state.run_id)
+    log.info("fetcher_completed", fetched=len(raw_pages), total_requested=len(state.urls_to_fetch), run_id=state.run_id)
     return state
 
 
 def cleaner_node(state: IngestionState) -> IngestionState:
     """Extract clean article text from raw HTML."""
-    log.info("cleaner_started", run_id=state.run_id)
+    log.info("cleaner_started", raw_pages_count=len(state.raw_pages), run_id=state.run_id)
 
     articles = clean_html_to_articles(state.raw_pages, state.topic)
     state.articles = articles
+
+    log.debug("articles_extracted", count=len(articles), titles=[a.title for a in articles[:3]])
+
+    # Log articles to markdown file
+    if articles:
+        md_content = f"# Extracted Articles — {state.run_id}\n\n"
+        for i, article in enumerate(articles, 1):
+            # Get first 2-3 sentences (roughly 200 chars)
+            preview = article.cleaned_text[:200] + "..." if len(article.cleaned_text) > 200 else article.cleaned_text
+            md_content += f"## Article {i}\n\n"
+            md_content += f"**Title:** {article.title}\n\n"
+            md_content += f"**Source:** {article.source}\n\n"
+            md_content += f"**URL:** {article.url}\n\n"
+            md_content += f"**Preview:**\n{preview}\n\n"
+            md_content += "---\n\n"
+
+        # Write to file
+        import pathlib
+        pathlib.Path("./data").mkdir(exist_ok=True)
+        with open(f"./data/extracted_articles_{state.run_id}.md", "w") as f:
+            f.write(md_content)
+        log.info("articles_logged_to_file", filename=f"extracted_articles_{state.run_id}.md", article_count=len(articles))
+    else:
+        log.warning("no_articles_extracted", raw_pages_count=len(state.raw_pages))
 
     log.info("cleaner_completed", count=len(articles), run_id=state.run_id)
     return state
@@ -87,24 +132,22 @@ def deduper_node(state: IngestionState) -> IngestionState:
     for article in state.articles:
         # Check exact ID match
         if vector_store.document_exists(article.id):
-            log.debug("article_already_exists", article_id=article.id)
+            log.debug("article_already_exists", article_id=article.id, title=article.title)
             skipped += 1
             continue
 
-        # Check semantic similarity
-        first_sentences = " ".join(article.cleaned_text.split()[:30])
-        embedding = embedder.encode(first_sentences)
-
-        similar = vector_store.similarity_search(embedding, n_results=1)
-        if similar and len(similar) > 0:
-            # In a real implementation, compute cosine similarity
-            # For now, we'll assume the retrieval itself is sufficient deduplication
-            pass
-
+        # If we found the article by ID, it's definitely a duplicate
         deduplicated.append(article)
 
     state.articles = deduplicated
-    log.info("deduper_completed", kept=len(deduplicated), skipped=skipped, run_id=state.run_id)
+
+    # If all fetched articles were duplicates, mark as processed_all_articles
+    if len(deduplicated) == 0 and len(state.articles) == 0 and skipped > 0:
+        log.warning("all_fetched_articles_were_duplicates", skipped=skipped, total_available=len(state.urls_to_fetch))
+        state.processed_all_articles = True
+
+    new_titles = [a.title for a in deduplicated[:3]]
+    log.info("deduper_completed", kept=len(deduplicated), skipped=skipped, new_articles=new_titles, run_id=state.run_id)
     return state
 
 
@@ -174,64 +217,99 @@ Previous unsupported claims to avoid:
 {state.critic_verdict.unsupported_claims}
 """
 
-    prompt = f"""You are a professional news analyst producing a briefing report on UK AI Regulation.
+    prompt = f"""You are a professional news analyst producing a briefing report.
 
 Context (source articles):
 {context}
 
 {previous_context}
 
-Produce a JSON object matching this exact schema:
+Your task: Write a summary that is EXACTLY 100-150 words. Count every word carefully.
+
+Produce ONLY a JSON object with NO other text:
 {{
-  "summary": "<100-150 word paragraph summarising the key developments>",
+  "summary": "<Write exactly 100-150 words. This is critical. Count carefully before submitting.>",
   "key_takeaways": ["<takeaway 1>", "<takeaway 2>", "<takeaway 3>"],
   "organisations_mentioned": ["<org1>", "<org2>"],
   "key_terms": ["<term1>", "<term2>"],
   "delta_notes": "<1-2 sentences on what is new vs the previous report, or null if first report>"
 }}
 
-Rules:
-- summary MUST be between 100 and 150 words. Count carefully.
-- key_takeaways MUST contain between 3 and 5 items.
-- Every claim in summary must be directly supported by the provided context.
-- Do not invent organisations or events not mentioned in the context.
-- Respond with JSON only. No preamble, no markdown fences."""
+STRICT RULES:
+- The summary field MUST contain EXACTLY 100-150 words. NO MORE, NO LESS.
+- Count every single word in the summary before you submit it.
+- If your summary is less than 100 words, add more details from the context.
+- If your summary is more than 150 words, remove less important details.
+- key_takeaways MUST be 3-5 items.
+- Every claim must be supported by the provided context.
+- Do NOT invent organisations or events.
+- Respond with ONLY the JSON object. No preamble, no markdown, no explanation."""
 
     try:
-        provider = get_llm_provider()
-        response = provider.invoke(
-            [{"role": "user", "content": prompt}],
-            max_tokens=1000,
-        )
+        from pydantic import ValidationError
 
-        # Parse JSON
-        report_data = json.loads(response)
-        # Deduplicate source URLs and article IDs
-        seen_urls = set()
-        unique_urls = []
-        unique_article_ids = []
-        for chunk in context_chunks:
-            url = chunk.metadata.get("url") if chunk.metadata else None
-            if url and url not in seen_urls:
-                unique_urls.append(url)
-                unique_article_ids.append(chunk.article_id)
-                seen_urls.add(url)
+        max_retries = 3
+        retry_count = 0
+        report_data = None
+        report = None
+        last_error = None
 
-        report = Report(
-            id=str(uuid.uuid4()),
-            topic=state.topic,
-            generated_at=datetime.utcnow(),
-            summary=report_data["summary"],
-            key_takeaways=report_data["key_takeaways"],
-            organisations_mentioned=report_data.get("organisations_mentioned", []),
-            key_terms=report_data.get("key_terms", []),
-            source_urls=unique_urls,
-            article_ids=unique_article_ids,
-            delta_notes=report_data.get("delta_notes"),
-            run_id=state.run_id,
-        )
-        state.draft_report = report
-        log.info("reporter_completed", report_id=report.id, run_id=state.run_id)
+        while retry_count < max_retries and report is None:
+            try:
+                provider = get_llm_provider()
+                response = provider.invoke(
+                    [{"role": "user", "content": [{"text": prompt}]}],
+                    max_tokens=1000,
+                )
+
+                log.debug("llm_response_raw", response_len=len(response), response_preview=response[:200], attempt=retry_count+1)
+
+                # Extract JSON from response (handle models that add text around JSON)
+                import re
+                json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                    report_data = json.loads(json_str)
+
+                    # Deduplicate source URLs and article IDs
+                    seen_urls = set()
+                    unique_urls = []
+                    unique_article_ids = []
+                    for chunk in context_chunks:
+                        url = chunk.metadata.get("url") if chunk.metadata else None
+                        if url and url not in seen_urls:
+                            unique_urls.append(url)
+                            unique_article_ids.append(chunk.article_id)
+                            seen_urls.add(url)
+
+                    # Try to create Report object to trigger validation
+                    report = Report(
+                        id=str(uuid.uuid4()),
+                        topic=state.topic,
+                        generated_at=datetime.utcnow(),
+                        summary=report_data["summary"],
+                        key_takeaways=report_data["key_takeaways"],
+                        organisations_mentioned=report_data.get("organisations_mentioned", []),
+                        key_terms=report_data.get("key_terms", []),
+                        source_urls=unique_urls,
+                        article_ids=unique_article_ids,
+                        delta_notes=report_data.get("delta_notes"),
+                        run_id=state.run_id,
+                    )
+                    log.info("report_generated_successfully", attempt=retry_count+1, report_id=report.id)
+                else:
+                    raise ValueError("No JSON found in response")
+
+            except (ValueError, json.JSONDecodeError, ValidationError, KeyError) as e:
+                last_error = str(e)
+                retry_count += 1
+                log.warning("report_generation_failed_retrying", error=last_error, attempt=retry_count, max_retries=max_retries)
+                if retry_count >= max_retries:
+                    raise ValueError(f"Failed to generate valid report after {max_retries} attempts: {last_error}")
+
+        if report:
+            state.draft_report = report
+            log.info("reporter_completed", report_id=report.id, run_id=state.run_id)
 
     except Exception as e:
         log.error("report_generation_failed", error=str(e), run_id=state.run_id)
@@ -330,6 +408,11 @@ def should_revise(state: IngestionState) -> str:
 def persister_node(state: IngestionState) -> IngestionState:
     """Persist the approved report and update run log."""
     log.info("persister_started", run_id=state.run_id)
+
+    # Check if all articles have been processed
+    if state.processed_all_articles:
+        log.warning("all_articles_processed", topic=state.topic, message="No new articles found. All available articles in RSS feeds have already been processed.")
+        return state
 
     if not state.draft_report:
         log.error("no_report_to_persist", run_id=state.run_id)
