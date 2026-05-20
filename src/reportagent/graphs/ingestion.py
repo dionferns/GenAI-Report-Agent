@@ -5,7 +5,6 @@ import uuid
 from datetime import datetime
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langgraph.graph import StateGraph, END
-from sentence_transformers import SentenceTransformer
 import feedparser
 import structlog
 
@@ -16,6 +15,7 @@ from reportagent.config import get_settings, SOURCE_MAP
 from reportagent.storage.vector import VectorStore
 from reportagent.storage.archive import Archive
 from reportagent.llm import get_llm_provider
+from reportagent.llm.embedder import get_embedder
 from reportagent.tools.fetcher import fetch_urls
 from reportagent.tools.cleaner import clean_html_to_articles
 
@@ -80,7 +80,7 @@ def deduper_node(state: IngestionState) -> IngestionState:
     log.info("deduper_started", count=len(state.articles), run_id=state.run_id)
 
     vector_store = VectorStore(state.topic)
-    embedder = SentenceTransformer("all-MiniLM-L6-v2")
+    embedder = get_embedder()
     deduplicated = []
     skipped = 0
 
@@ -93,7 +93,7 @@ def deduper_node(state: IngestionState) -> IngestionState:
 
         # Check semantic similarity
         first_sentences = " ".join(article.cleaned_text.split()[:30])
-        embedding = embedder.encode(first_sentences).tolist()
+        embedding = embedder.encode(first_sentences)
 
         similar = vector_store.similarity_search(embedding, n_results=1)
         if similar and len(similar) > 0:
@@ -117,13 +117,13 @@ def chunker_embedder_node(state: IngestionState) -> IngestionState:
         chunk_overlap=64,
         separators=["\n\n", "\n", " ", ""],
     )
-    embedder = SentenceTransformer("all-MiniLM-L6-v2")
+    embedder = get_embedder()
 
     chunks = []
     for article in state.articles:
         texts = splitter.split_text(article.cleaned_text)
         for idx, text in enumerate(texts):
-            embedding = embedder.encode(text).tolist()
+            embedding = embedder.encode(text)
             chunk = Chunk(
                 article_id=article.id,
                 text=text,

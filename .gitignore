@@ -51,3 +51,6 @@ logs/
 # Archived/deprecated files (not for Git repo)
 .archive/
 uv.lock
+src/**/*.egg-info/
+output.json
+evals/results/

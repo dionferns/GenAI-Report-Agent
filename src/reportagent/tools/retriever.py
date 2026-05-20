@@ -4,7 +4,7 @@ from langchain_core.tools import tool
 from rank_bm25 import BM25Okapi
 from reportagent.schemas import Chunk
 from reportagent.storage.vector import VectorStore
-from sentence_transformers import SentenceTransformer
+from reportagent.llm.embedder import get_embedder
 import structlog
 
 log = structlog.get_logger()
@@ -15,7 +15,7 @@ class HybridRetriever:
 
     def __init__(self, topic: str = "uk_ai_regulation"):
         self.vector_store = VectorStore(topic)
-        self.embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        self.embedder = get_embedder()
         self._bm25 = None
         self._chunk_texts = None
         self._rebuild_bm25()
@@ -42,7 +42,7 @@ class HybridRetriever:
         results_dict = {}  # Use dict to deduplicate by chunk text
 
         # Vector search
-        query_embedding = self.embedder.encode(query).tolist()
+        query_embedding = self.embedder.encode(query)
         vector_results = self.vector_store.similarity_search(query_embedding, n_results=10)
 
         for chunk in vector_results:

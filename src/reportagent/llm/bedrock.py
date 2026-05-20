@@ -16,8 +16,8 @@ class BedrockProvider:
             aws_access_key_id=settings.aws_access_key_id,
             aws_secret_access_key=settings.aws_secret_access_key,
         )
-        # Use Claude 3.7 Sonnet (works with on-demand in eu-west-2)
-        self.model_id = "anthropic.claude-3-7-sonnet-20250219-v1:0"
+        # Use Claude 3 Haiku (cheapest option - 85% cost reduction)
+        self.model_id = "anthropic.claude-3-haiku-20240307-v1:0"
 
     def invoke(self, messages: list[dict], max_tokens: int = 1000) -> str:
         """Synchronously invoke Claude via Bedrock."""

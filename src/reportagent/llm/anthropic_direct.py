@@ -10,7 +10,7 @@ class AnthropicDirectProvider:
     def __init__(self):
         settings = get_settings()
         self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        self.model = "claude-3-5-sonnet-20241022"
+        self.model = "claude-3-haiku-20240307"
 
     def invoke(self, messages: list[dict], max_tokens: int = 1000) -> str:
         """Synchronously invoke Claude."""
