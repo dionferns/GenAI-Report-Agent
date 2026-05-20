@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "data-reply-genai-agent"
+version = "1.0.0"
+description = "Production-grade agentic news intelligence system for UK AI Regulation"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    {name = "Data Reply", email = "info@datareply.co.uk"}
+]
+license = {text = "Proprietary"}
+
+dependencies = [
+    # Agentic framework
+    "langgraph>=0.2",
+    "langchain-core>=0.1.40",
+    "langchain>=0.1.10",
+
+    # LLM providers
+    "anthropic>=0.30",
+    "boto3>=1.34.0",
+
+    # Embeddings & vector store
+    "sentence-transformers>=2.2.0",
+    "chromadb>=0.5.0",
+
+    # BM25 retrieval
+    "rank_bm25>=0.2.2",
+
+    # Web fetching & parsing
+    "httpx[http2]>=0.26.0",
+    "trafilatura>=1.6.0",
+    "feedparser>=6.0.10",
+
+    # Data validation & config
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+
+    # Scheduling
+    "apscheduler>=3.10.0",
+
+    # Observability
+    "structlog>=24.1.0",
+    "langsmith>=0.1.0",
+
+    # Evaluation
+    "ragas>=0.1.0",
+
+    # UI
+    "streamlit>=1.35.0",
+
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "aiofiles>=23.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.1.0",
+    "black>=23.11.0",
+    "mypy>=1.7.0",
+]
+
+[tool.setuptools]
+packages = ["reportagent"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["docs", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--tb=short -v"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

@@ -1,0 +1,1 @@
+{"model":"claude-3-7-sonnet-20250219","id":"msg_bdrk_01GYuDsMT7pgNFbr3yYQPZpU","type":"message","role":"assistant","content":[{"type":"text","text":"Hello there!"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":13,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":6}}
