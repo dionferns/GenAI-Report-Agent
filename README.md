@@ -4,7 +4,9 @@
 >
 > **Domain:** UK Economy news | **Refresh:** Hourly | **Output:** Reports + Chat Interface
 
-![Demo](docs/demo.gif)
+> **Demo & Examples:** The `demo/` folder contains sample chat interactions, LLM responses, and a video walkthrough of the system.
+
+![Demo](demo/demo.gif)
 
 ---
 
