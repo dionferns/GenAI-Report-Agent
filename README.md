@@ -1,10 +1,10 @@
 # GenAI Report Agent
 
-An autonomous news intelligence system that ingests articles, generates structured summaries, and powers conversational Q&A — built with LangGraph, vector search, and production-grade observability.
+> An autonomous news intelligence system that ingests articles, generates structured summaries, and powers conversational Q&A — built with LangGraph, vector search, and production-grade observability.
+>
+> **Domain:** UK Economy news | **Refresh:** Hourly | **Output:** Reports + Chat Interface
 
-**Domain:** UK Economy news | **Refresh:** Hourly | **Output:** Reports + Chat Interface
-
-> **Demo & Examples:** The `demo/` folder contains sample chat interactions, LLM responses, and a video walkthrough of the system.
+**Demo & Examples:** The `demo/` folder contains sample chat interactions, LLM responses, and a video walkthrough of the system.
 
 ![Demo](demo/demo.gif)
 
