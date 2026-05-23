@@ -243,6 +243,7 @@ Run with `make eval`. Results committed to repo.
 - **No auth:** Chat is open. Production would use Cognito.
 - **CPU embeddings:** Local sentence-transformers is slow. Bedrock Titan is faster in production.
 - **BM25 rebuilt at startup:** Acceptable at current corpus size.
+- **No topic filtering on RSS:** BBC Business feeds return all business news globally, not just UK economy. Non-relevant articles can pass through. See [docs/article_filtering.md](docs/article_filtering.md) for explored approaches.
 
 ---
 

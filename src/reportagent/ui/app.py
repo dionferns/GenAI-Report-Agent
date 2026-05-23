@@ -69,6 +69,23 @@ with st.sidebar:
             st.markdown(f"**Articles Fetched:** {latest_run.articles_fetched}")
             st.markdown(f"**Chunks Added:** {latest_run.chunks_added}")
 
+        # Run history
+        st.markdown("---")
+        st.subheader("🕓 Run History (Last 10)")
+        recent_runs = archive.get_recent_run_logs(limit=10)
+        if recent_runs:
+            for run in recent_runs:
+                status_icon = "✅" if run.status.value == "success" else "❌"
+                time_str = run.started_at.strftime("%d %b %H:%M")
+                new_articles = run.articles_fetched - run.articles_deduplicated
+                st.markdown(
+                    f"{status_icon} **{time_str}** — "
+                    f"{new_articles} new articles, "
+                    f"{run.chunks_added} chunks"
+                )
+        else:
+            st.markdown("_No runs recorded yet._")
+
     except Exception as e:
         st.error(f"Error loading system status: {str(e)}")
 

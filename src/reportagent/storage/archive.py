@@ -153,6 +153,20 @@ class Archive:
             return RunLog.model_validate_json(row[0])
         return None
 
+    def get_recent_run_logs(self, limit: int = 10) -> list[RunLog]:
+        """Get the most recent run logs."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT data FROM run_logs ORDER BY started_at DESC LIMIT ?",
+            (limit,),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [RunLog.model_validate_json(row[0]) for row in rows]
+
     def save_eval_result(self, result: EvalResult) -> None:
         """Save an evaluation result."""
         conn = sqlite3.connect(self.db_path)

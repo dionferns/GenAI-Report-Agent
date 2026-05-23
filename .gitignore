@@ -43,6 +43,7 @@ dmypy.json
 
 # Project-specific
 data/
+new_learned_things.md
 logs/
 *.db
 *.log
