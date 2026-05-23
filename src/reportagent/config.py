@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     aws_default_region: str = "eu-west-2"
+    aws_role_arn: str = ""  # For assuming role, if using IAM user
+    aws_session_token: str = ""  # Auto-injected on Lambda/App Runner, leave blank for local dev
 
     # LangSmith Configuration
     langchain_api_key: str = ""
@@ -28,7 +30,13 @@ class Settings(BaseSettings):
     default_topic: str = "uk_economy"
     ingest_interval_minutes: int = 60
     max_urls_per_run: int = 10
+    max_articles_per_run: int = 10
     max_critic_iterations: int = 2
+    max_empty_batches: int = 3
+
+    # S3 Storage Configuration
+    s3_bucket_name: str = "genai-report-agent"
+    use_s3_archive: bool = False  # False locally, True on Lambda/AppRunner
 
     class Config:
         env_file = ".env"

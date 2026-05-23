@@ -194,3 +194,22 @@ class Archive:
         if row:
             return EvalResult.model_validate_json(row[0])
         return None
+
+
+def get_archive():
+    """
+    Return the appropriate archive backend (S3 or SQLite).
+
+    Uses S3 if:
+    - USE_S3_ARCHIVE=true in .env
+    - Running on AWS Lambda (detected via AWS_LAMBDA_FUNCTION_NAME env var)
+
+    Otherwise uses SQLite (local development).
+    """
+    import os
+    settings = get_settings()
+
+    if settings.use_s3_archive or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        from reportagent.storage.s3_archive import S3Archive
+        return S3Archive()
+    return Archive()

@@ -1,0 +1,59 @@
+# Data directories (created fresh in container)
+data/
+logs/
+
+# Development artifacts
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+
+# Version control
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Keep .streamlit/ for config (needed in Docker)
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.coverage
+htmlcov/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation
+*.md
+docs/
+README.md
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# AWS credentials (security)
+.aws/
+
+# Misc
+*.log
+*.tmp
+.claude/

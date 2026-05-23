@@ -74,6 +74,17 @@ class RunLogger:
             },
         )
 
+    def log_loop_summary(self, loop_number: int, urls_fetched: int, articles_found: int, chunks_created: int, total_new_articles: int):
+        """Log summary for each loop iteration."""
+        self.log(
+            "loop_completed",
+            loop=loop_number,
+            urls_fetched=urls_fetched,
+            articles_found=articles_found,
+            chunks_created=chunks_created,
+            total_new_articles_so_far=total_new_articles,
+        )
+
     def get_summary(self):
         """Return a human-readable summary of the run."""
         return "\n".join([json.dumps(e) for e in self.events])

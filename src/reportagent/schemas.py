@@ -159,6 +159,9 @@ class IngestionState(BaseModel):
     errors: list[str] = Field(default_factory=list)
     processed_all_articles: bool = False
     urls_tried_in_run: list[str] = Field(default_factory=list)
+    consecutive_empty_batches: int = 0
+    loop_number: int = 0
+    total_new_articles: int = 0
 
 
 # ── Chat State ───────────────────────────────────────────────────────────────

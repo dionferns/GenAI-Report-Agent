@@ -2,24 +2,46 @@
 
 import json
 import re
+import time
+import uuid
 from datetime import datetime
 from langgraph.graph import StateGraph, END
 import structlog
 
 from reportagent.schemas import ChatState, ChatMessage, MessageRole, Citation
-from reportagent.storage.archive import Archive
 from reportagent.guardrails import injection, pii
 from reportagent.tools.retriever import HybridRetriever
 from reportagent.llm import get_llm_provider
+from reportagent.observability.chat_logger import ChatLogger
+from reportagent.config import get_settings
 
 log = structlog.get_logger()
+
+# Chat logger cache (session_id -> ChatLogger instance)
+_chat_logger_cache = {}
+
+
+def _get_or_create_logger(session_id: str) -> ChatLogger:
+    """Get or create chat logger for a session."""
+    if session_id not in _chat_logger_cache:
+        settings = get_settings()
+        _chat_logger_cache[session_id] = ChatLogger(
+            session_id=session_id,
+            use_s3=settings.use_s3_archive
+        )
+        log.info("chat_logger_initialized", session_id=session_id)
+    return _chat_logger_cache[session_id]
 
 
 def guardrail_node(state: ChatState) -> ChatState:
     """Sanitise user input before any LLM call."""
     log.info("guardrail_started", session_id=state.session_id)
 
+    # Get or create chat logger
+    chat_logger = _get_or_create_logger(state.session_id)
+
     query = state.current_query
+    message_id = str(uuid.uuid4())
 
     # Check for injection
     is_safe, reason = injection.check(query)
@@ -30,6 +52,7 @@ def guardrail_node(state: ChatState) -> ChatState:
             role=MessageRole.ASSISTANT,
             content="I can't process that request. Please ask a legitimate question about the news content.",
         )
+        chat_logger.log_guardrail_triggered(message_id, reason, query)
         return state
 
     # Scrub PII
@@ -73,12 +96,13 @@ def retriever_node(state: ChatState) -> ChatState:
     log.info("retriever_started", session_id=state.session_id, query_type=state.query_type, topic=state.topic)
 
     retriever = HybridRetriever(topic=state.topic)
-    chunks = retriever.retrieve(state.sanitised_query, n_results=8)
+    chunks = retriever.retrieve(state.sanitised_query, n_results=5)
     state.retrieved_chunks = chunks
 
     # If latest query, fetch the latest report
     if state.query_type == "latest":
-        archive = Archive()
+        from reportagent.storage.archive import get_archive
+        archive = get_archive()
         latest_report = archive.get_latest_report(state.topic)
         state.latest_report = latest_report
 
@@ -90,14 +114,24 @@ def responder_node(state: ChatState) -> ChatState:
     """Generate the final answer with inline citations."""
     log.info("responder_started", session_id=state.session_id)
 
+    # Get or create chat logger
+    chat_logger = _get_or_create_logger(state.session_id)
+
+    message_id = str(uuid.uuid4())
+    start_time = time.time()
+
     # Build context - store chunks with their indices for citation mapping
     context_parts = []
-    chunk_sources = {}  # Map index to source URL
+    chunk_sources = {}  # Map index to source URL or article ID
     for i, chunk in enumerate(state.retrieved_chunks, 1):
         context_parts.append(f"[{i}] {chunk.text}")
         url = chunk.metadata.get("url", "") if chunk.metadata else ""
+        article_id = chunk.metadata.get("article_id", "") if chunk.metadata else ""
+        # Use URL if available, otherwise use article_id, otherwise skip citation
         if url:
             chunk_sources[i] = url
+        elif article_id:
+            chunk_sources[i] = f"#article-{article_id}"
 
     if state.latest_report:
         context_parts.append(f"\nLatest Report Summary:\n{state.latest_report.summary}")
@@ -133,22 +167,24 @@ Respond with the answer text only. Start with the answer, not with "Based on the
 
         # Extract citations from response
         citations = []
-        citation_pattern = r"\[(\d+)\]"
+        citation_pattern = r"\[(\d+(?:\s*,\s*\d+)*)\]"
         seen_indices = set()
         for match in re.finditer(citation_pattern, response_text):
-            idx = int(match.group(1))
-            if idx in chunk_sources and idx not in seen_indices:
-                url = chunk_sources[idx]
-                chunk = state.retrieved_chunks[idx - 1]
-                citation = Citation(
-                    index=idx,
-                    url=url,
-                    title=url.split("/")[-1] if url else "Source",
-                    retrieved_at=datetime.utcnow(),
-                    chunk_id=chunk.id,
-                )
-                citations.append(citation)
-                seen_indices.add(idx)
+            indices_str = match.group(1)
+            indices = [int(x.strip()) for x in indices_str.split(",")]
+            for idx in indices:
+                if idx in chunk_sources and idx not in seen_indices:
+                    url = chunk_sources[idx]
+                    chunk = state.retrieved_chunks[idx - 1]
+                    citation = Citation(
+                        index=idx,
+                        url=url,
+                        title=url.split("/")[-1] if url else "Source",
+                        retrieved_at=datetime.utcnow(),
+                        chunk_id=chunk.id,
+                    )
+                    citations.append(citation)
+                    seen_indices.add(idx)
 
         response = ChatMessage(
             role=MessageRole.ASSISTANT,
@@ -157,7 +193,24 @@ Respond with the answer text only. Start with the answer, not with "Based on the
         )
         state.response = response
 
-        log.info("responder_completed", session_id=state.session_id, citations=len(citations))
+        # Log successful message exchange
+        latency_ms = (time.time() - start_time) * 1000
+        if chat_logger:
+            chat_logger.log_message(
+                message_id=message_id,
+                user_message=state.current_query,
+                assistant_response=response_text,
+                retrieved_chunks_count=len(state.retrieved_chunks),
+                citations_count=len(citations),
+                model_used="bedrock",
+                latency_ms=latency_ms,
+                query_type=state.query_type,
+                topic=state.topic,
+                retrieved_chunks=state.retrieved_chunks,
+                llm_prompt=prompt,
+            )
+
+        log.info("responder_completed", session_id=state.session_id, citations=len(citations), latency_ms=latency_ms)
 
     except Exception as e:
         log.error("responder_failed", error=str(e), session_id=state.session_id)
@@ -165,6 +218,9 @@ Respond with the answer text only. Start with the answer, not with "Based on the
             role=MessageRole.ASSISTANT,
             content=f"I encountered an error processing your question: {str(e)}",
         )
+        # Log error
+        if chat_logger:
+            chat_logger.log_error(message_id, str(e), state.current_query)
 
     return state
 

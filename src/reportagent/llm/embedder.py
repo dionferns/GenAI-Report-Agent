@@ -1,21 +1,14 @@
 """AWS Bedrock Titan Embeddings provider."""
 
 import json
-import boto3
-from reportagent.config import get_settings
+from reportagent.llm.aws_auth import get_aws_client
 
 
 class BedrockEmbedder:
     """AWS Bedrock Titan Embeddings."""
 
     def __init__(self):
-        settings = get_settings()
-        self.client = boto3.client(
-            "bedrock-runtime",
-            region_name=settings.aws_default_region,
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-        )
+        self.client = get_aws_client("bedrock-runtime")
         self.model_id = "amazon.titan-embed-text-v2:0"
 
     def encode(self, text: str) -> list[float]:

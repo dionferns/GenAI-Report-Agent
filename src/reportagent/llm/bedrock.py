@@ -1,20 +1,13 @@
 """AWS Bedrock provider implementation."""
 
-import boto3
-from reportagent.config import get_settings
+from reportagent.llm.aws_auth import get_aws_client
 
 
 class BedrockProvider:
     """Llama 3 via AWS Bedrock."""
 
     def __init__(self):
-        settings = get_settings()
-        self.client = boto3.client(
-            "bedrock-runtime",
-            region_name=settings.aws_default_region,
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-        )
+        self.client = get_aws_client("bedrock-runtime")
         self.model_id = "meta.llama3-70b-instruct-v1:0"
 
     def invoke(self, messages: list[dict], max_tokens: int = 1000) -> str:

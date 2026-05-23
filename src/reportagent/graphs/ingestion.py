@@ -13,7 +13,6 @@ from reportagent.schemas import (
 )
 from reportagent.config import get_settings, SOURCE_MAP
 from reportagent.storage.vector import VectorStore
-from reportagent.storage.archive import Archive
 from reportagent.llm import get_llm_provider
 from reportagent.llm.embedder import get_embedder
 from reportagent.tools.fetcher import fetch_urls
@@ -30,10 +29,16 @@ run_logger: RunLogger = None
 def planner_node(state: IngestionState) -> IngestionState:
     """Decide which source URLs to fetch, skipping already-processed articles."""
     global run_logger
-    run_logger = RunLogger(state.run_id)
 
-    log.info("planner_started", topic=state.topic, run_id=state.run_id)
-    run_logger.log("planner_started", topic=state.topic)
+    # Initialize run logger and loop counter on first iteration
+    if state.loop_number == 0:
+        run_logger = RunLogger(state.run_id)
+        state.loop_number = 1
+    else:
+        state.loop_number += 1
+
+    log.info("planner_started", loop=state.loop_number, topic=state.topic, total_new_articles=state.total_new_articles, run_id=state.run_id)
+    run_logger.log("planner_started", loop=state.loop_number, topic=state.topic)
     log.debug("source_map_available_topics", topics=list(SOURCE_MAP.keys()))
 
     sources = SOURCE_MAP.get(state.topic, [])
@@ -125,7 +130,7 @@ def cleaner_node(state: IngestionState) -> IngestionState:
 def deduper_node(state: IngestionState) -> IngestionState:
     """Remove duplicate articles already in the vector store."""
     global run_logger
-    log.info("deduper_started", count=len(state.articles), run_id=state.run_id)
+    log.info("deduper_started", loop=state.loop_number, count=len(state.articles), run_id=state.run_id)
 
     vector_store = VectorStore(state.topic)
     embedder = get_embedder()
@@ -144,50 +149,80 @@ def deduper_node(state: IngestionState) -> IngestionState:
 
         # If article is not in store, it's new
         deduplicated.append(article)
+
+    # Check if accepting all deduplicated articles would exceed limit
+    remaining_quota = settings.max_articles_per_run - state.total_new_articles
+    if remaining_quota > 0:
+        # Keep articles up to remaining quota
+        articles_to_keep = deduplicated[:remaining_quota]
+    else:
+        # Already at or exceeded limit, keep none
+        articles_to_keep = []
+
+    # Build kept_ids list only for articles we're keeping
+    for article in articles_to_keep:
         kept_ids.append({"id": article.id, "title": article.title, "url": str(article.url)})
 
-    state.articles = deduplicated
+    state.articles = articles_to_keep
+    state.total_new_articles += len(articles_to_keep)
 
     # Log deduplication results
     run_logger.log_deduper(
-        input_articles=len(state.articles) + skipped,
-        kept=len(deduplicated),
+        input_articles=len(articles_to_keep) + skipped,
+        kept=len(articles_to_keep),
         skipped=skipped,
         article_ids={"kept": kept_ids, "skipped": skipped_ids},
     )
 
     # Write markdown file only for articles that passed deduplication
-    if deduplicated:
-        md_content = f"# Extracted Articles — {state.run_id}\n\n"
-        for i, article in enumerate(deduplicated, 1):
+    if articles_to_keep:
+        md_content = f"# Extracted Articles — Run {state.run_id}\n\n"
+        md_content += f"**Run Time:** {datetime.utcnow().isoformat()}\n"
+        md_content += f"**Topic:** {state.topic}\n"
+        md_content += f"**Total Articles:** {len(articles_to_keep)}\n\n"
+        md_content += "---\n\n"
+
+        for i, article in enumerate(articles_to_keep, 1):
             preview = article.cleaned_text[:200] + "..." if len(article.cleaned_text) > 200 else article.cleaned_text
+
             md_content += f"## Article {i}\n\n"
             md_content += f"**Title:** {article.title}\n\n"
             md_content += f"**Source:** {article.source}\n\n"
+
+            # Add publication and fetch metadata if available
+            if article.published_at:
+                md_content += f"**Published:** {article.published_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
+            md_content += f"**Fetched:** {article.fetched_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
+
+            # Add article metrics
+            md_content += f"**Word Count:** {article.word_count} words\n\n"
+            md_content += f"**Article ID:** `{article.id}`\n\n"
+
             md_content += f"**URL:** {article.url}\n\n"
-            md_content += f"**Preview:**\n{preview}\n\n"
+            md_content += f"**Preview:**\n```\n{preview}\n```\n\n"
             md_content += "---\n\n"
 
         import pathlib
         pathlib.Path("./data").mkdir(exist_ok=True)
         with open(f"./data/extracted_articles_{state.run_id}.md", "w") as f:
             f.write(md_content)
-        log.info("articles_logged_to_file", filename=f"extracted_articles_{state.run_id}.md", article_count=len(deduplicated))
+        log.info("articles_logged_to_file", filename=f"extracted_articles_{state.run_id}.md", article_count=len(articles_to_keep))
 
     # If all fetched articles were duplicates, log decision but DON'T set processed_all_articles yet
     # (planner will set it when it exhausts all URLs)
     if len(deduplicated) == 0 and skipped > 0:
-        log.warning("all_fetched_articles_were_duplicates", skipped=skipped, duplicates_found=skipped)
-        run_logger.log("deduper_decision", decision="all_duplicates", will_retry=True)
+        log.warning("all_fetched_articles_were_duplicates", loop=state.loop_number, skipped=skipped)
+        run_logger.log("deduper_decision", loop=state.loop_number, decision="all_duplicates", will_retry=True)
 
     new_titles = [a.title for a in deduplicated[:3]]
-    log.info("deduper_completed", kept=len(deduplicated), skipped=skipped, new_articles=new_titles, run_id=state.run_id)
+    log.info("deduper_completed", loop=state.loop_number, kept=len(deduplicated), skipped=skipped, total_new_so_far=state.total_new_articles, new_articles=new_titles, run_id=state.run_id)
     return state
 
 
 def chunker_embedder_node(state: IngestionState) -> IngestionState:
     """Chunk articles and embed them."""
-    log.info("chunker_embedder_started", count=len(state.articles), run_id=state.run_id)
+    global run_logger
+    log.info("chunker_embedder_started", loop=state.loop_number, count=len(state.articles), run_id=state.run_id)
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=512,
@@ -222,7 +257,16 @@ def chunker_embedder_node(state: IngestionState) -> IngestionState:
     vector_store = VectorStore(state.topic)
     vector_store.upsert_chunks(chunks)
 
-    log.info("chunker_embedder_completed", chunks=len(chunks), run_id=state.run_id)
+    # Log loop summary
+    run_logger.log_loop_summary(
+        loop_number=state.loop_number,
+        urls_fetched=len(state.urls_to_fetch),
+        articles_found=len(state.articles),
+        chunks_created=len(chunks),
+        total_new_articles=state.total_new_articles,
+    )
+
+    log.info("chunker_embedder_completed", loop=state.loop_number, chunks=len(chunks), total_new=state.total_new_articles, run_id=state.run_id)
     return state
 
 
@@ -454,7 +498,8 @@ def persister_node(state: IngestionState) -> IngestionState:
         return state
 
     try:
-        archive = Archive()
+        from reportagent.storage.archive import get_archive
+        archive = get_archive()
         archive.save_report(state.draft_report)
 
         run_log = RunLog(
@@ -462,7 +507,7 @@ def persister_node(state: IngestionState) -> IngestionState:
             started_at=datetime.utcnow(),
             completed_at=datetime.utcnow(),
             status=RunStatus.SUCCESS,
-            articles_fetched=len(state.articles),
+            articles_fetched=state.total_new_articles,
             articles_deduplicated=0,
             chunks_added=len(state.new_chunks),
             report_id=state.draft_report.id,
@@ -488,12 +533,37 @@ def persister_node(state: IngestionState) -> IngestionState:
 
 def after_deduper(state: IngestionState) -> str:
     """Decide whether to continue or fetch more articles if all were duplicates."""
+    # Check if we've hit the target article count
+    if state.total_new_articles >= settings.max_articles_per_run:
+        log.info(
+            "max_articles_reached",
+            total_new_articles=state.total_new_articles,
+            max_target=settings.max_articles_per_run,
+            run_id=state.run_id,
+        )
+        state.processed_all_articles = True
+        return "chunker_embedder"
+
     if len(state.articles) == 0 and not state.processed_all_articles:
-        # All articles were duplicates, try fetching more
-        log.warning("all_articles_duplicate_retrying", run_id=state.run_id)
-        return "planner"  # Loop back to planner to fetch more URLs
+        state.consecutive_empty_batches += 1
+
+        if state.consecutive_empty_batches >= settings.max_empty_batches:
+            # Too many batches with zero new articles, assume feed is stale
+            log.warning(
+                "max_empty_batches_reached",
+                batches=state.consecutive_empty_batches,
+                max=settings.max_empty_batches,
+                run_id=state.run_id,
+            )
+            state.processed_all_articles = True
+            return "chunker_embedder"
+
+        # Try fetching more URLs
+        log.warning("all_articles_duplicate_retrying", batch=state.consecutive_empty_batches, run_id=state.run_id)
+        return "planner"
     else:
-        # Continue with chunking/embedding
+        # Found new articles or reached end, continue with chunking
+        state.consecutive_empty_batches = 0
         return "chunker_embedder"
 
 

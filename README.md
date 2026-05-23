@@ -250,6 +250,8 @@ Run with `make eval`. Results committed to repo.
 ## What's Next
 
 With more time:
+- **Conversation history** — Pass previous messages to the chat graph to enable follow-up questions and multi-turn conversations (like ChatGPT/Claude)
+- **Chunk deduplication across turns** — Track previously retrieved chunks in a conversation and deprioritize them in future retrievals to provide diverse context and avoid redundant answers
 - User feedback loop (👍/👎 per response) → eval signal
 - Bedrock Titan embeddings (faster, in-region)
 - AWS deployment (EventBridge → Lambda, DynamoDB, AppRunner)
