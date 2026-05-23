@@ -7,11 +7,10 @@ WORKDIR /var/task
 COPY requirements-lambda.txt .
 RUN pip install --no-cache-dir -r requirements-lambda.txt && rm requirements-lambda.txt
 
-# Copy source code only (no pyproject.toml install needed)
-COPY src/ src/
-
-# Add src to Python path so imports work
-ENV PYTHONPATH=/var/task/src:${PYTHONPATH}
+# Copy source code into /var/task/reportagent/
+COPY src/reportagent/ /var/task/reportagent/
 
 # Lambda handler entrypoint
+# Format: /path/to/handler/file.handler_function
+# This tells Lambda: look in /var/task for reportagent.lambda_handler module, call lambda_handler function
 CMD ["reportagent.lambda_handler.lambda_handler"]
