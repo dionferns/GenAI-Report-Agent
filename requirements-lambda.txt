@@ -1,0 +1,34 @@
+# Lambda requirements (serverless deployment)
+# Minimal dependencies - no local storage, no UI, no scheduling
+# Pinned versions with pre-built wheels for Lambda compatibility
+
+# Core dependencies
+langgraph>=0.2
+langchain-core>=0.1.40
+langchain>=0.1.10
+langchain-text-splitters>=0.0.1
+
+# LLM providers (all via Bedrock)
+anthropic>=0.30
+boto3>=1.34.0
+
+# BM25 retrieval - pin numpy to version with pre-built wheels
+numpy==1.26.4
+rank_bm25>=0.2.2
+
+# Web fetching & parsing
+httpx[http2]>=0.26.0
+trafilatura>=1.6.0
+feedparser>=6.0.10
+
+# Data validation & config
+pydantic>=2.0
+pydantic-settings>=2.0
+
+# Observability
+structlog>=24.1.0
+langsmith>=0.1.0
+
+# Utilities
+python-dotenv>=1.0.0
+aiofiles>=23.2.0

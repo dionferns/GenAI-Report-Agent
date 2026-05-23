@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+WORKDIR /var/task
+
+# Install dependencies — use lambda-specific requirements with pinned numpy
+# All packages have pre-built wheels, no compilation needed
+COPY requirements-lambda.txt .
+RUN pip install --no-cache-dir -r requirements-lambda.txt && rm requirements-lambda.txt
+
+# Copy source code only (no pyproject.toml install needed)
+COPY src/ src/
+
+# Add src to Python path so imports work
+ENV PYTHONPATH=/var/task/src:${PYTHONPATH}
+
+# Lambda handler entrypoint
+CMD ["reportagent.lambda_handler.lambda_handler"]
