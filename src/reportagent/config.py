@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     s3_bucket_name: str = "genai-report-agent"
     use_s3_archive: bool = False  # False locally, True on Lambda/AppRunner
 
+    # OpenSearch Serverless
+    opensearch_endpoint: str = ""
+    vector_store_provider: str = "chroma"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

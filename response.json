@@ -1,1 +1,1 @@
-{"errorType":"Runtime.InvalidEntrypoint","errorMessage":"RequestId: 10c68d0c-8d7f-4bea-95fe-1d288b293fef Error: exec: \"reportagent.lambda_handler.lambda_handler\": executable file not found in $PATH"}
+{"statusCode": 200, "body": "{\"run_id\": \"6089753d-7c24-441b-8bc1-f9ebec0782fc\", \"status\": \"success\"}"}

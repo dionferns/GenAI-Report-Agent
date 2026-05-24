@@ -3,7 +3,7 @@
 from langchain_core.tools import tool
 from rank_bm25 import BM25Okapi
 from reportagent.schemas import Chunk
-from reportagent.storage.vector import VectorStore
+from reportagent.storage.vector import get_vector_store
 from reportagent.llm.embedder import get_embedder
 import structlog
 
@@ -14,7 +14,7 @@ class HybridRetriever:
     """Hybrid BM25 + vector retrieval."""
 
     def __init__(self, topic: str = "uk_economy"):
-        self.vector_store = VectorStore(topic)
+        self.vector_store = get_vector_store(topic)
         self.embedder = get_embedder()
         self._bm25 = None
         self._chunk_texts = None

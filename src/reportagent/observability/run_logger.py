@@ -1,6 +1,7 @@
 """Run-specific logging to data folder for debugging ingestion."""
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -10,8 +11,13 @@ class RunLogger:
 
     def __init__(self, run_id: str):
         self.run_id = run_id
+        self.is_lambda = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
         self.log_file = Path(f"./data/run_logs/{run_id}.jsonl")
-        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Only create directory on non-Lambda (local dev/App Runner)
+        if not self.is_lambda:
+            self.log_file.parent.mkdir(parents=True, exist_ok=True)
+
         self.events = []
 
     def log(self, event: str, **kwargs):
@@ -23,9 +29,11 @@ class RunLogger:
             **kwargs,
         }
         self.events.append(entry)
-        # Write immediately to file
-        with open(self.log_file, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+
+        # Write immediately to file (only on local dev/App Runner)
+        if not self.is_lambda:
+            with open(self.log_file, "a") as f:
+                f.write(json.dumps(entry) + "\n")
 
     def log_section(self, section_name: str):
         """Log a section header."""

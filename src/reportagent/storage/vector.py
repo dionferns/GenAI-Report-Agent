@@ -1,11 +1,16 @@
 """Vector store wrapper around Chroma."""
 
-import chromadb
+import os
 from reportagent.config import get_settings
 from reportagent.schemas import Chunk
 import structlog
 
 log = structlog.get_logger()
+
+# Only import chromadb if not on Lambda (it's not in Lambda requirements)
+_chromadb_available = not bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+if _chromadb_available:
+    import chromadb
 
 
 class VectorStore:
@@ -13,6 +18,12 @@ class VectorStore:
 
     def __init__(self, topic: str = "uk_economy"):
         settings = get_settings()
+        if not _chromadb_available:
+            log.warning("chromadb_not_available", context="Lambda or missing dependency")
+            self.client = None
+            self.collection = None
+            return
+
         self.client = chromadb.PersistentClient(
             path=settings.chroma_persist_dir
         )
@@ -24,7 +35,7 @@ class VectorStore:
 
     def upsert_chunks(self, chunks: list[Chunk]) -> None:
         """Upsert chunks to the vector store."""
-        if not chunks:
+        if not chunks or not self.collection:
             return
 
         ids = [chunk.id for chunk in chunks]
@@ -44,6 +55,9 @@ class VectorStore:
         self, query_embedding: list[float], n_results: int = 10
     ) -> list[Chunk]:
         """Search for similar chunks by embedding."""
+        if not self.collection:
+            return []
+
         results = self.collection.query(
             query_embeddings=[query_embedding],
             n_results=n_results,
@@ -73,6 +87,8 @@ class VectorStore:
 
     def article_exists(self, article_id: str) -> bool:
         """Check if an article (by ID) exists in the collection."""
+        if not self.collection:
+            return False
         try:
             result = self.collection.get(where={"article_id": article_id})
             return len(result["ids"]) > 0
@@ -81,13 +97,36 @@ class VectorStore:
 
     def get_all_chunk_texts(self) -> list[str]:
         """Get all chunk texts for BM25 index building."""
+        if not self.collection:
+            return []
         results = self.collection.get()
         return results.get("documents", [])
 
     def get_collection_stats(self) -> dict:
         """Get statistics about the collection."""
+        if not self.collection:
+            return {"collection_name": "", "document_count": 0}
         count = self.collection.count()
         return {
             "collection_name": self.collection_name,
             "document_count": count,
         }
+
+
+def get_vector_store(topic: str = "uk_economy"):
+    """
+    Return OpenSearch in production, Chroma locally.
+    Controlled by VECTOR_STORE_PROVIDER env var.
+    Auto-detects Lambda/AppRunner environments.
+    """
+    settings = get_settings()
+    provider = settings.vector_store_provider
+
+    if os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.getenv("AWS_EXECUTION_ENV"):
+        provider = "opensearch"
+
+    if provider == "opensearch":
+        from reportagent.storage.opensearch_vector import OpenSearchVectorStore
+        return OpenSearchVectorStore(topic)
+
+    return VectorStore(topic)

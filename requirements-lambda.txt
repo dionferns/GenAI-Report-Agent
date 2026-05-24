@@ -16,6 +16,10 @@ boto3>=1.34.0
 numpy==1.26.4
 rank_bm25>=0.2.2
 
+# Vector store — OpenSearch Serverless
+opensearch-py>=2.4.0
+requests-aws4auth>=1.2.3
+
 # Web fetching & parsing
 httpx[http2]>=0.26.0
 trafilatura>=1.6.0

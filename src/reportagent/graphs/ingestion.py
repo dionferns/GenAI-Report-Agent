@@ -12,7 +12,7 @@ from reportagent.schemas import (
     Article, Chunk, Report, CriticVerdict, IngestionState, RunLog, RunStatus
 )
 from reportagent.config import get_settings, SOURCE_MAP
-from reportagent.storage.vector import VectorStore
+from reportagent.storage.vector import get_vector_store
 from reportagent.llm import get_llm_provider
 from reportagent.llm.embedder import get_embedder
 from reportagent.tools.fetcher import fetch_urls
@@ -132,7 +132,7 @@ def deduper_node(state: IngestionState) -> IngestionState:
     global run_logger
     log.info("deduper_started", loop=state.loop_number, count=len(state.articles), run_id=state.run_id)
 
-    vector_store = VectorStore(state.topic)
+    vector_store = get_vector_store(state.topic)
     embedder = get_embedder()
     deduplicated = []
     skipped = 0
@@ -202,11 +202,10 @@ def deduper_node(state: IngestionState) -> IngestionState:
             md_content += f"**Preview:**\n```\n{preview}\n```\n\n"
             md_content += "---\n\n"
 
-        import pathlib
-        pathlib.Path("./data").mkdir(exist_ok=True)
-        with open(f"./data/extracted_articles_{state.run_id}.md", "w") as f:
-            f.write(md_content)
-        log.info("articles_logged_to_file", filename=f"extracted_articles_{state.run_id}.md", article_count=len(articles_to_keep))
+        from reportagent.storage.storage_util import save_text_file
+        filename = f"extracted_articles_{state.run_id}.md"
+        save_text_file(filename, md_content)
+        log.info("articles_saved", filename=filename, article_count=len(articles_to_keep))
 
     # If all fetched articles were duplicates, log decision but DON'T set processed_all_articles yet
     # (planner will set it when it exhausts all URLs)
@@ -254,7 +253,7 @@ def chunker_embedder_node(state: IngestionState) -> IngestionState:
     state.new_chunks = chunks
 
     # Upsert to vector store
-    vector_store = VectorStore(state.topic)
+    vector_store = get_vector_store(state.topic)
     vector_store.upsert_chunks(chunks)
 
     # Log loop summary
