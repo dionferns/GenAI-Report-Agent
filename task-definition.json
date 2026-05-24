@@ -60,5 +60,6 @@
       ]
     }
   ],
-  "executionRoleArn": "arn:aws:iam::743808053008:role/GenAIReportAgentRole"
+  "executionRoleArn": "arn:aws:iam::743808053008:role/GenAIReportAgentRole",
+  "taskRoleArn": "arn:aws:iam::743808053008:role/GenAIReportAgentRole"
 }

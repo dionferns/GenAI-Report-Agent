@@ -19,8 +19,8 @@ RUN pip install --no-cache-dir --user --upgrade pip setuptools wheel && \
 COPY pyproject.toml .
 COPY src/ src/
 
-# Install package
-RUN pip install --no-cache-dir --user .
+# Install package in editable mode so imports work
+RUN pip install --no-cache-dir --user -e .
 
 # Runtime stage: minimal image with only runtime dependencies
 FROM python:3.11-slim
@@ -30,7 +30,6 @@ WORKDIR /app
 # Set environment early (used by CMD)
 ENV PATH=/root/.local/bin:$PATH
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app/src:$PYTHONPATH
 ENV PORT=8080
 
 # Copy only the installed packages from builder
