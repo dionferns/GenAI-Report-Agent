@@ -203,13 +203,18 @@ def get_archive():
     Uses S3 if:
     - USE_S3_ARCHIVE=true in .env
     - Running on AWS Lambda (detected via AWS_LAMBDA_FUNCTION_NAME env var)
+    - Running on AWS (detected via AWS_EXECUTION_ENV or AWS_REGION env vars)
 
     Otherwise uses SQLite (local development).
     """
     import os
     settings = get_settings()
 
-    if settings.use_s3_archive or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+    is_lambda = os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+    # App Runner and other AWS services set these environment variables
+    is_aws_environment = bool(os.getenv("AWS_EXECUTION_ENV")) or bool(os.getenv("AWS_REGION"))
+
+    if settings.use_s3_archive or is_lambda or is_aws_environment:
         from reportagent.storage.s3_archive import S3Archive
         return S3Archive()
     return Archive()

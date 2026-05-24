@@ -271,6 +271,13 @@ def chunker_embedder_node(state: IngestionState) -> IngestionState:
 
 def reporter_node(state: IngestionState) -> IngestionState:
     """Generate the structured hourly report."""
+    import time
+
+    # Wait for OpenSearch Serverless eventual consistency
+    # Newly inserted chunks take ~20 seconds to be searchable
+    log.info("reporter_waiting_for_opensearch_consistency", seconds=60, run_id=state.run_id)
+    time.sleep(60)
+
     log.info("reporter_started", run_id=state.run_id)
 
     if not state.new_chunks:

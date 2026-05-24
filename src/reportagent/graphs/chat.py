@@ -95,6 +95,13 @@ def retriever_node(state: ChatState) -> ChatState:
     """Retrieve relevant chunks using hybrid search."""
     log.info("retriever_started", session_id=state.session_id, query_type=state.query_type, topic=state.topic)
 
+    # Wait for OpenSearch Serverless eventual consistency
+    # Newly inserted chunks take ~20 seconds to be searchable
+    # Defer HybridRetriever initialization until after this wait
+    log.info("retriever_waiting_for_opensearch_consistency", seconds=20, session_id=state.session_id)
+    time.sleep(20)
+
+    # Now initialize HybridRetriever after consistency wait
     retriever = HybridRetriever(topic=state.topic)
     chunks = retriever.retrieve(state.sanitised_query, n_results=5)
     state.retrieved_chunks = chunks
@@ -106,7 +113,7 @@ def retriever_node(state: ChatState) -> ChatState:
         latest_report = archive.get_latest_report(state.topic)
         state.latest_report = latest_report
 
-    log.info("retriever_completed", session_id=state.session_id, chunks=len(chunks))
+    log.info("retriever_completed", session_id=state.session_id, chunks=len(chunks), consistency_wait_applied=True)
     return state
 
 
@@ -119,6 +126,10 @@ def responder_node(state: ChatState) -> ChatState:
 
     message_id = str(uuid.uuid4())
     start_time = time.time()
+
+    # Validate that we have retrieved chunks, warn if empty
+    if not state.retrieved_chunks:
+        log.warning("responder_no_chunks_retrieved", session_id=state.session_id)
 
     # Build context - store chunks with their indices for citation mapping
     context_parts = []
