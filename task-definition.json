@@ -1,0 +1,64 @@
+{
+  "family": "genai-report-agent-ui",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "containerDefinitions": [
+    {
+      "name": "streamlit-ui",
+      "image": "743808053008.dkr.ecr.eu-west-2.amazonaws.com/genai-report-agent:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8501,
+          "hostPort": 8501,
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/genai-report-agent",
+          "awslogs-region": "eu-west-2",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "environment": [
+        {
+          "name": "MAX_URLS_PER_RUN",
+          "value": "5"
+        },
+        {
+          "name": "MAX_ARTICLES_PER_RUN",
+          "value": "5"
+        },
+        {
+          "name": "LLM_PROVIDER",
+          "value": "bedrock"
+        },
+        {
+          "name": "AWS_DEFAULT_REGION",
+          "value": "eu-west-2"
+        },
+        {
+          "name": "OPENSEARCH_ENDPOINT",
+          "value": "https://r9vvhn1br1n60sn1ljb7.eu-west-2.aoss.amazonaws.com"
+        },
+        {
+          "name": "VECTOR_STORE_PROVIDER",
+          "value": "opensearch"
+        },
+        {
+          "name": "USE_S3_ARCHIVE",
+          "value": "true"
+        },
+        {
+          "name": "S3_BUCKET_NAME",
+          "value": "genai-report-agent"
+        }
+      ]
+    }
+  ],
+  "executionRoleArn": "arn:aws:iam::743808053008:role/GenAIReportAgentRole"
+}

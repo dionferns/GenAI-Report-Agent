@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     # Agent Configuration
     default_topic: str = "uk_economy"
     ingest_interval_minutes: int = 60
-    max_urls_per_run: int = 10
-    max_articles_per_run: int = 10
+    max_urls_per_run: int = 5
+    max_articles_per_run: int = 5
     max_critic_iterations: int = 2
     max_empty_batches: int = 3
 

@@ -30,6 +30,7 @@ WORKDIR /app
 # Set environment early (used by CMD)
 ENV PATH=/root/.local/bin:$PATH
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app/src:$PYTHONPATH
 ENV PORT=8080
 
 # Copy only the installed packages from builder

@@ -47,8 +47,8 @@ docker-build:
 docker-push:
 	@echo "Logging into ECR..."
 	AWS_PROFILE=genai aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin 743808053008.dkr.ecr.eu-west-2.amazonaws.com
-	@echo "Building image for linux/amd64 (AWS App Runner)..."
-	docker buildx build --platform linux/amd64 -t genai-report-agent:latest .
+	@echo "Building image for linux/amd64 (ECS Fargate)..."
+	docker buildx build --platform linux/amd64 --load -t genai-report-agent:latest .
 	docker tag genai-report-agent:latest 743808053008.dkr.ecr.eu-west-2.amazonaws.com/genai-report-agent:latest
 	docker tag genai-report-agent:latest 743808053008.dkr.ecr.eu-west-2.amazonaws.com/genai-report-agent:v1.0.0
 	@echo "Pushing to ECR..."
