@@ -41,7 +41,7 @@ dmypy.json
 *.swo
 *~
 .DS_Store
-
+interview_prep/
 # Project-specific
 data/
 new_learned_things.md

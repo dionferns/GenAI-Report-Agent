@@ -56,6 +56,14 @@
         {
           "name": "S3_BUCKET_NAME",
           "value": "genai-report-agent"
+        },
+        {
+          "name": "AWS_ACCESS_KEY_ID",
+          "value": ""
+        },
+        {
+          "name": "AWS_SECRET_ACCESS_KEY",
+          "value": ""
         }
       ]
     }

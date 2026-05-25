@@ -1,5 +1,6 @@
 """AWS authentication helper for role assumption."""
 
+import os
 import boto3
 from reportagent.config import get_settings
 
@@ -8,10 +9,10 @@ def get_aws_client(service_name: str = "bedrock-runtime"):
     """
     Get an AWS service client with proper credential handling.
 
-    Priority:
-    1. If AWS_SESSION_TOKEN is set (from assume-role), use it directly
-    2. If AWS_ROLE_ARN is set, call STS AssumeRole to get temporary credentials
-    3. Otherwise, use IAM user credentials directly (fallback for local dev)
+    On ECS/Lambda: Credentials automatically come from the task/execution role via
+    the metadata service. boto3 auto-discovers them; we just create a client.
+
+    On local dev: Uses role assumption (if AWS_ROLE_ARN set) or direct keys.
 
     Usage:
         bedrock = get_aws_client("bedrock-runtime")
@@ -19,17 +20,14 @@ def get_aws_client(service_name: str = "bedrock-runtime"):
     """
     settings = get_settings()
 
-    # If session token is already provided (from assume-role), use it directly
-    if settings.aws_session_token:
-        return boto3.client(
-            service_name,
-            region_name=settings.aws_default_region,
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-            aws_session_token=settings.aws_session_token,
-        )
+    # On ECS Fargate or Lambda, credentials auto-discovered from task/execution role metadata
+    is_aws = os.getenv("AWS_EXECUTION_ENV") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.getenv("ECS_CONTAINER_METADATA_URI")
 
-    # If role ARN is set, assume it to get temporary credentials
+    if is_aws:
+        # Let boto3 auto-detect credentials from the task role
+        return boto3.client(service_name, region_name=settings.aws_default_region)
+
+    # Local dev: use role assumption or direct keys
     if settings.aws_role_arn:
         sts = boto3.client(
             "sts",
@@ -51,7 +49,7 @@ def get_aws_client(service_name: str = "bedrock-runtime"):
             aws_session_token=credentials["SessionToken"],
         )
 
-    # Fallback: use access keys directly (for local dev without role)
+    # Fallback: direct keys (local dev without role assumption)
     return boto3.client(
         service_name,
         region_name=settings.aws_default_region,
